@@ -1,0 +1,161 @@
+@model List<LabReservation.Models.Reservation>
+@{
+    ViewData["Title"] = "All Reservations";
+    Layout = "~/Views/Shared/NoFooterLayout.cshtml";
+
+}
+
+@section Styles {
+    <link href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css" rel="stylesheet" />
+}
+
+<h2 class="text-center mb-4">All Reservations</h2>
+
+<!-- 🔍 Search & Export & Filter Controls -->
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <input type="text" id="searchInput" class="form-control" placeholder="🔍 Search..." />
+    </div>
+    <div class="col-md-3">
+        <input type="text" id="startDateTime" class="form-control" placeholder="Start Date & Time" />
+    </div>
+    <div class="col-md-3">
+        <input type="text" id="endDateTime" class="form-control" placeholder="End Date & Time" />
+    </div>
+    <div class="col-md-3 d-flex gap-2">
+        <button class="btn btn-outline-primary w-100" onclick="filterByDateTime()">Filter</button>
+        <button class="btn btn-outline-secondary w-100" onclick="clearFilters()">Clear Filters</button>
+        <button class="btn btn-outline-success w-100" onclick="exportTableToCSV()">CSV</button>
+        <button class="btn btn-outline-warning w-100" onclick="exportTableToExcel()">Excel</button>
+    </div>
+</div>
+
+<!-- ✅ Alert message -->
+<div id="filterAlert" class="alert alert-info d-none text-center" role="alert">
+    ✅ Filters cleared!
+</div>
+
+<!-- 📋 Reservation Table -->
+<table id="reservationTable" class="table table-bordered table-striped table-hover shadow-sm">
+    <thead class="table-primary text-center">
+        <tr>
+            <th>Student</th>
+            <th>Lab</th>
+            <th>Date</th>
+            <th>Time</th>
+            <th>Status</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var r in Model)
+        {
+            <tr>
+                <td>@r.User.StudentNumber</td>
+                <td>@r.Lab.Name</td>
+                <td>@r.Date.ToShortDateString()</td>
+                <td>@r.StartTime - @r.EndTime</td>
+                <td>@(string.IsNullOrEmpty(r.Status) ? "Pending" : r.Status)</td>
+                <td class="text-center">
+                    <div class="d-flex gap-2 justify-content-center">
+                        <form method="post" asp-action="Approve"><input type="hidden" name="id" value="@r.Id" /><button class="btn btn-sm btn-success">Approve</button></form>
+                        <form method="post" asp-action="Reject"><input type="hidden" name="id" value="@r.Id" /><button class="btn btn-sm btn-warning">Reject</button></form>
+                        <form method="post" asp-action="Delete"><input type="hidden" name="id" value="@r.Id" /><button class="btn btn-sm btn-danger">Delete</button></form>
+                    </div>
+                </td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+@section Scripts {
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+
+    <script>
+        // 🔍 Search filter
+        document.getElementById("searchInput").addEventListener("keyup", function () {
+            let filter = this.value.toLowerCase();
+            document.querySelectorAll("#reservationTable tbody tr").forEach(row => {
+                row.style.display = row.innerText.toLowerCase().includes(filter) ? "" : "none";
+            });
+        });
+
+        // 📅 Flatpickr initialization
+        flatpickr("#startDateTime", {
+            enableTime: true,
+            dateFormat: "Y-m-d H:i",
+            time_24hr: true
+        });
+
+        flatpickr("#endDateTime", {
+            enableTime: true,
+            dateFormat: "Y-m-d H:i",
+            time_24hr: true
+        });
+
+        // 🧠 Filter by datetime range
+        function filterByDateTime() {
+            const startVal = document.getElementById("startDateTime").value;
+            const endVal = document.getElementById("endDateTime").value;
+            const start = new Date(startVal);
+            const end = new Date(endVal);
+
+            document.querySelectorAll("#reservationTable tbody tr").forEach(row => {
+                const dateText = row.children[2].innerText.trim();
+                const timeText = row.children[3].innerText.trim().split("-")[0].trim();
+                const fullDate = new Date(dateText + ' ' + timeText);
+
+                if (!isNaN(start) && !isNaN(end)) {
+                    row.style.display = (fullDate >= start && fullDate <= end) ? "" : "none";
+                } else {
+                    row.style.display = "";
+                }
+            });
+        }
+
+        // 🧹 Clear all filters
+        function clearFilters() {
+            document.getElementById("searchInput").value = "";
+            document.getElementById("startDateTime").value = "";
+            document.getElementById("endDateTime").value = "";
+
+            document.querySelectorAll("#reservationTable tbody tr").forEach(row => {
+                row.style.display = "";
+            });
+
+            const alertBox = document.getElementById("filterAlert");
+            alertBox.classList.remove("d-none");
+            setTimeout(() => alertBox.classList.add("d-none"), 3000);
+        }
+
+        // 📁 Export CSV
+        function exportTableToCSV() {
+            const rows = document.querySelectorAll("#reservationTable tr");
+            let csvContent = "";
+            rows.forEach(row => {
+                let cols = row.querySelectorAll("td, th");
+                let rowData = Array.from(cols).map(col => `"${col.innerText}"`).join(",");
+                csvContent += rowData + "\r\n";
+            });
+
+            let blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+            let link = document.createElement("a");
+            link.href = URL.createObjectURL(blob);
+            link.download = "reservations.csv";
+            link.click();
+        }
+
+        // 📄 Export Excel
+        function exportTableToExcel() {
+            const table = document.getElementById("reservationTable");
+            const html = table.outerHTML.replace(/ /g, '%20');
+            const dataType = 'application/vnd.ms-excel';
+            const fileName = 'reservations.xls';
+
+            const link = document.createElement("a");
+            link.href = 'data:' + dataType + ', ' + html;
+            link.download = fileName;
+            link.click();
+        }
+    </script>
+}

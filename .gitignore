@@ -1,0 +1,22 @@
+# .NET / ASP.NET Core
+bin/
+obj/
+out/
+publish/
+appsettings.Development.json
+appsettings.Local.json
+*.db
+*.sqlite
+.env
+
+# Arduino / Embedded
+*.hex
+*.elf
+*.bin
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+*.log

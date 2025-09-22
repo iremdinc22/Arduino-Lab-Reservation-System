@@ -1,0 +1,112 @@
+@{
+    ViewData["Title"] = "Make Reservation";
+}
+
+@section Styles {
+    <link href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css" rel="stylesheet">
+}
+
+<style>
+    body {
+        background: linear-gradient(120deg, #89f7fe 0%, #66a6ff 100%);
+        min-height: 100vh;
+        margin: 0;
+        display: flex;
+        justify-content: center;
+        align-items: flex-start;
+        padding-top: 60px;
+        padding-bottom: 60px;
+    }
+</style>
+
+<div class="card shadow-lg p-5" style="width: 500px;">
+    <div class="text-center mb-4">
+        <i class="bi bi-calendar-check" style="font-size: 3rem; color: #007bff;"></i>
+        <h2 class="mt-2">Reserve Your Lab</h2>
+    </div>
+
+    @if (TempData["Success"] != null)
+{
+    <div class="alert alert-success alert-dismissible fade show" role="alert">
+        <i class="bi bi-check-circle-fill me-2"></i> @TempData["Success"]
+        ...
+    </div>
+}
+
+
+    <form method="post">
+        <div class="mb-3">
+            <label for="LabId" class="form-label">Select Laboratory</label>
+            <select class="form-select" id="LabId" name="LabId" required>
+                @foreach (var lab in ViewBag.Labs)
+                {
+                    <option value="@lab.Id">@lab.Name</option>
+                }
+            </select>
+        </div>
+
+        <div class="mb-3">
+            <label for="Date" class="form-label">Select Date</label>
+            <input type="text" class="form-control" id="Date" name="Date" required />
+        </div>
+
+        <div class="mb-3">
+            <label for="StartTime" class="form-label">Start Time</label>
+            <input type="text" class="form-control" id="StartTime" name="StartTime" required />
+        </div>
+
+        <div class="mb-4">
+            <label for="EndTime" class="form-label">End Time</label>
+            <input type="text" class="form-control" id="EndTime" name="EndTime" required />
+        </div>
+
+        <button type="submit" class="btn btn-success w-100">Reserve Now</button>
+
+        @if (ViewBag.Message != null)
+        {
+            <div class="alert alert-success mt-3" role="alert">
+                @ViewBag.Message
+            </div>
+        }
+    </form>
+
+    @if (ViewBag.MyReservations != null)
+    {
+        <hr />
+        <h5 class="mt-4 mb-2 text-primary">Your Reservations</h5>
+        <ul class="list-group">
+            @foreach (var r in ViewBag.MyReservations as List<LabReservation.Models.Reservation>)
+            {
+                <li class="list-group-item d-flex justify-content-between">
+                    <span>@r.Lab.Name - @r.Date.ToShortDateString() - @r.StartTime - @r.EndTime</span>
+                    <span class="badge bg-@(r.Status == "Approved" ? "success" : r.Status == "Rejected" ? "danger" : "warning")">@r.Status</span>
+                </li>
+            }
+        </ul>
+    }
+</div>
+
+@section Scripts {
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script>
+        flatpickr("#Date", {
+            dateFormat: "Y-m-d",
+            altInput: true,
+            altFormat: "F j, Y"
+        });
+
+        flatpickr("#StartTime", {
+            enableTime: true,
+            noCalendar: true,
+            dateFormat: "H:i",
+            time_24hr: true
+        });
+
+        flatpickr("#EndTime", {
+            enableTime: true,
+            noCalendar: true,
+            dateFormat: "H:i",
+            time_24hr: true
+        });
+    </script>
+}

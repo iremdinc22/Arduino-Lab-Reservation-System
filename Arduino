@@ -1,0 +1,262 @@
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+#include <Keypad.h>
+#include <Servo.h>
+#include <SoftwareSerial.h>
+
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+
+const byte ROWS = 4, COLS = 4;
+char keys[ROWS][COLS] = {
+  {'1','2','3','A'},
+  {'4','5','6','B'},
+  {'7','8','9','C'},
+  {'*','0','#','D'}
+};
+byte rowPins[ROWS] = {2, 3, 4, 5};
+byte colPins[COLS] = {A0, A1, A2, A3};
+Keypad keypad = Keypad(makeKeymap(keys), rowPins, colPins, ROWS, COLS);
+
+Servo servo;
+bool girisYapildi = false;
+#define SD_CS 10
+SoftwareSerial espSerial(6, 7); // RX, TX
+
+const int yLedPin = 10;
+const int kLedPin = 11;
+
+char ogrenciNo[8] = "";
+char sifre[6] = "";
+int ogrenciIndex = 0, sifreIndex = 0;
+bool noAsamasi = true;
+
+String server = "192.168.154.244"; // API sunucu IP
+int port = 5185;                   // API portu
+
+void setup() {
+  Serial.begin(9600);
+  espSerial.begin(9600);
+  lcd.init(); lcd.backlight();
+
+  pinMode(yLedPin, OUTPUT);
+  digitalWrite(yLedPin, LOW);
+
+  pinMode(kLedPin, OUTPUT);
+  digitalWrite(kLedPin, LOW);
+
+  servo.attach(8); // Servo motor D8 pinine bağlı
+  servo.write(0);  // Başlangıçta kapalı konumda
+
+  lcd.clear(); lcd.print("WiFi baglaniyor");
+  baglanWifi();
+  lcd.clear(); lcd.print("Ogrenci no girin:");
+}
+
+void loop() {
+  char key = keypad.getKey();
+  if (key) {
+    if (key == 'D' && girisYapildi) {
+      lcd.clear(); lcd.print("Cikis Yapildi");
+      servo.write(0); // Kapıyı kapat
+      delay(2000);
+      girisYapildi = false;
+      postLog("Çıkış Yapıldı");
+      resetGiris();
+      
+      return;
+    }
+
+    if (noAsamasi && ogrenciIndex < 7) {
+      if (key == '*') { // Silme tuşu
+        if (ogrenciIndex > 0) {
+          ogrenciIndex--;
+          ogrenciNo[ogrenciIndex] = '\0';
+          lcd.setCursor(ogrenciIndex, 1); lcd.print(" ");
+          lcd.setCursor(ogrenciIndex, 1);
+        }
+        return;
+      }
+      ogrenciNo[ogrenciIndex++] = key;
+      ogrenciNo[ogrenciIndex] = '\0';
+      lcd.setCursor(ogrenciIndex - 1, 1); lcd.print("*");
+
+      if (ogrenciIndex == 7) {
+        lcd.clear(); lcd.print("Sifre girin:"); noAsamasi = false;
+      }
+    } else if (!noAsamasi && sifreIndex < 5) {
+      if (key == '*') { // Silme tuşu
+        if (sifreIndex > 0) {
+          sifreIndex--;
+          sifre[sifreIndex] = '\0';
+          lcd.setCursor(sifreIndex, 1); lcd.print(" ");
+          lcd.setCursor(sifreIndex, 1);
+        }
+        return;
+      }
+
+      sifre[sifreIndex++] = key;
+      sifre[sifreIndex] = '\0';
+      lcd.setCursor(sifreIndex - 1, 1); lcd.print("*");
+
+      if (sifreIndex == 5) {
+        lcd.clear(); lcd.print("Kontrol...");
+        if (apiKontrol()) {          
+          lcd.clear(); lcd.print("Giris Onay");
+          ledBasarili();
+          servo.write(90); // Kapıyı aç
+          girisYapildi = true;
+          delay(3000);
+          lcd.clear(); lcd.print("Lab Dolu!");
+          ledKapat();
+          postLog("Giriş Başarılı");
+        } else {
+          lcd.clear(); lcd.print("Red Edildi");
+          ledBasarisiz();
+          delay(3000);
+          ledKapat();
+          postLog("Giriş Başarısız");
+          resetGiris();
+        }
+      }
+    }
+  }
+}
+
+void postLog(String message) {
+  String json = "{";
+  json += "\"StudentNumber\":\"" + String(ogrenciNo) + "\",";  
+  json += "\"Message\":\"" + message + "\"";
+  json += "}";
+
+  int contentLength = json.length();
+
+  sendCommand("AT+CIPSTART=\"TCP\",\"" + server + "\"," + String(port), 5000);
+
+  String request = "POST /api/log HTTP/1.1\r\n";
+  request += "Host: " + server + "\r\n";
+  request += "Content-Type: application/json\r\n";
+  request += "Content-Length: " + String(contentLength) + "\r\n";
+  request += "Connection: close\r\n\r\n";
+  request += json;
+
+  Serial.println("Gönderilen POST isteği:");
+  Serial.println(request);
+
+  sendCommand("AT+CIPSEND=" + String(request.length()), 2000);
+  delay(100);
+
+  espSerial.print(request);
+
+  unsigned long timeout = millis();
+  while (millis() - timeout < 10000) {
+    while (espSerial.available()) {
+      char c = espSerial.read();
+      Serial.write(c);
+      timeout = millis();
+    }
+  }
+}
+
+
+void ledBasarili() {
+  digitalWrite(yLedPin, HIGH);
+  digitalWrite(kLedPin, LOW);
+}
+
+void ledBasarisiz() {
+  digitalWrite(yLedPin, LOW);
+  digitalWrite(kLedPin, HIGH);
+}
+
+void ledKapat() {
+  digitalWrite(yLedPin, LOW);
+  digitalWrite(kLedPin, LOW);
+}
+
+
+void baglanWifi() {
+  sendCommand("AT", 1000);
+  sendCommand("AT+CWMODE=1", 1000);
+  sendCommand("AT+RST", 2000);
+  delay(3000); // reset sonrası espSerial temizlensin
+  sendCommand("AT+CWJAP=\"rana\",\"rana1234\"", 8000);
+  sendCommand("AT+CIFSR", 2000); // IP adresini yazdır
+}
+
+
+void resetGiris() {
+  ogrenciIndex = sifreIndex = 0;
+  ogrenciNo[0] = sifre[0] = '\0';
+  noAsamasi = true;
+  lcd.clear(); lcd.print("Ogrenci no girin:");
+}
+
+
+
+bool apiKontrol() {
+
+  // ESP ile bağlantı kuruluyor
+  sendCommand("AT+CIPSTART=\"TCP\",\"" + server + "\"," + String(port), 5000);
+
+  String request = "GET /api/reservationapi/check/";
+  request += String(ogrenciNo);
+  request += "/";
+  request += String(sifre);
+  request += " HTTP/1.1\r\n";
+  request += "Host: " + server + "\r\n";
+  request += "Connection: close\r\n\r\n";
+
+  Serial.println(F("Oluşturulan HTTP İsteği:"));
+  Serial.println(request);
+
+
+  // Gönderilecek karakter uzunluğu bildiriliyor
+  sendCommand("AT+CIPSEND=" + String(request.length()), 5000);
+
+  delay(100);
+
+  // HTTP GET isteği gönderiliyor
+  espSerial.print(request);
+
+
+  // Şimdi gelen tüm veriyi direk okuyoruz ve Serial'e yazdırıyoruz
+  String response = "";
+  unsigned long timeout = millis();
+  while (millis() - timeout < 10000) {
+    while (espSerial.available()) {
+      char c = espSerial.read();
+      Serial.write(c); // gelen karakteri seri monitöre bas
+      response += c;
+      timeout = millis(); // veri gelmeye devam ettiği sürece süreyi uzat
+    }
+  }
+
+  return extractResultBool(response);
+}
+
+void sendCommand(String cmd, const int wait) {
+  Serial.println("Komut: " + cmd);
+  espSerial.println(cmd);
+
+  unsigned long t = millis();
+  while (millis() - t < wait) {
+    while (espSerial.available()) {
+      char c = espSerial.read();
+      Serial.write(c);
+    }
+  }
+  Serial.println("\n---");
+}
+
+bool extractResultBool(String response) {
+  int index = response.indexOf("RESULT:");
+  if (index == -1 || index + 7 >= response.length()) {
+    return false; // RESULT yoksa false
+  }
+
+  char value = response.charAt(index + 7);
+  return value == '1'; // '1' ise true, değilse false
+}
+
+
+
